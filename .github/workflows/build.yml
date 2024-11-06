@@ -3,125 +3,72 @@ name: build
 on: [push, pull_request]
 
 jobs:
+  build:
+    runs-on: ${{ matrix.os }}
 
-  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]  # You can add 'linux-latest' or other OSes if needed
+        build_type: [Release]
+        enable_ui: [on]
 
-    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
 
-    strategy:
+    # Remove ccache step if not using Linux
+    - name: Setup Ninja (Windows)
+      uses: seanmiddleditch/gha-setup-ninja@master
 
-      fail-fast: false
+    - name: Install MSVC Developer Command Prompt (Windows)
+      uses: ilammy/msvc-dev-cmd@v1
+      if: runner.os == 'Windows'
 
-      matrix:
+    - name: Install Dependencies (Linux only)
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Linux" ]] ; then
+          sudo apt-get update -qq
+          sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev
+        fi
 
-        os: [windows-latest]
+    - name: Generating Makefiles
+      shell: bash
+      run: |
+        if [[ "${{ runner.os }}" == "Windows" ]] ; then
+          export enable_ccache=off
+        else
+          export enable_ccache=on
+        fi
 
-        build_type: [Release]
+        # Download and extract Skia
+        curl -L https://github.com/blueloveTH/aseprite/releases/download/v0.01/skia.zip --output skia.zip
+        if [[ "${{ runner.os }}" == "Windows" ]] ; then
+          7z x skia.zip  # Make sure 7z is installed on the Windows runner or use Expand-Archive for PowerShell
+        else
+          unzip skia.zip
+        fi
 
-        enable_ui: [on]
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DENABLE_UI=${{ matrix.enable_ui }} \
+          -DENABLE_CCACHE=$enable_ccache \
+          -DLAF_BACKEND=skia \
+          -DSKIA_DIR=./skia \
+          -DSKIA_LIBRARY_DIR=./skia/out/Release-x64 \
+          -DSKIA_LIBRARY=./skia/out/Release-x64/skia.lib
 
-        include:
+    - name: Compiling
+      shell: bash
+      run: |
+        cd build && ninja
 
-          - os: windows-latest
-
-            build_type: Release
-
-            enable_ui: on
-
-    steps:
-
-    - uses: actions/checkout@v3
-
-      with:
-
-        submodules: 'recursive'
-
-    - name: ccache
-
-      uses: hendrikmuhs/ccache-action@v1
-
-      if: runner.os == 'Linux'
-
-      with:
-
-        key: ${{ matrix.os }}-${{ matrix.enable_ui }}
-
-    - uses: seanmiddleditch/gha-setup-ninja@master
-
-    - uses: ilammy/msvc-dev-cmd@v1
-
-      if: runner.os == 'Windows'
-
-    - name: Install Dependencies
-
-      shell: bash
-
-      run: |
-
-        if [[ "${{ runner.os }}" == "Linux" ]] ; then
-
-          sudo apt-get update -qq
-
-          sudo apt-get install -y \
-
-            libx11-dev libxcursor-dev libxi-dev
-
-        fi
-
-    - name: Generating Makefiles
-
-      shell: bash
-
-      run: |
-
-        if [[ "${{ runner.os }}" == "Windows" ]] ; then
-
-          export enable_ccache=off
-
-        else
-
-          export enable_ccache=on
-
-        fi
-
-        curl -L https://github.com/blueloveTH/aseprite/releases/download/v0.01/skia.zip --output skia.zip
-
-        7z x skia.zip
-
-        cmake -S . -B build -G Ninja \
-
-          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-
-          -DENABLE_UI=${{ matrix.enable_ui }} \
-
-          -DENABLE_CCACHE=$enable_ccache \
-
-          -DLAF_BACKEND=skia \
-
-          -DSKIA_DIR=./skia \
-
-          -DSKIA_LIBRARY_DIR=./skia/out/Release-x64 \
-
-          -DSKIA_LIBRARY=./skia/out/Release-x64/skia.lib
-
-    - name: Compiling
-
-      shell: bash
-
-      run: |
-
-        cd build && ninja
-
-    - uses: actions/upload-artifact@v3
-
-      with:
-
-        name: aseprite
-
-        path: |
-
-          D:/a/aseprite/aseprite/build/bin/data
-
-          D:/a/aseprite/aseprite/build/bin/aseprite.exe
-
- 作者：独立游戏杂货铺 https://www.bilibili.com/read/cv27083106/ 出处：bilibili
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: aseprite
+        path: |
+          ${{ github.workspace }}/aseprite/build/bin/data
+          ${{ github.workspace }}/aseprite/build/bin/aseprite.exe
