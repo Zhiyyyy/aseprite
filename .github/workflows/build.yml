@@ -1,39 +1,38 @@
 name: build
-
 on: [push, pull_request]
-
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]  # You can add 'linux-latest' or other OSes if needed
+        os: [windows-latest]
         build_type: [Release]
         enable_ui: [on]
-
+        include:
+          - os: windows-latest
+            build_type: Release
+            enable_ui: on
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: 'recursive'
-
-    # Remove ccache step if not using Linux
-    - name: Setup Ninja (Windows)
-      uses: seanmiddleditch/gha-setup-ninja@master
-
-    - name: Install MSVC Developer Command Prompt (Windows)
-      uses: ilammy/msvc-dev-cmd@v1
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1
+      if: runner.os == 'Linux'
+      with:
+        key: ${{ matrix.os }}-${{ matrix.enable_ui }}
+    - uses: seanmiddleditch/gha-setup-ninja@master
+    - uses: ilammy/msvc-dev-cmd@v1
       if: runner.os == 'Windows'
-
-    - name: Install Dependencies (Linux only)
+    - name: Install Dependencies
       shell: bash
       run: |
         if [[ "${{ runner.os }}" == "Linux" ]] ; then
           sudo apt-get update -qq
-          sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev
+          sudo apt-get install -y \
+            libx11-dev libxcursor-dev libxi-dev
         fi
-
     - name: Generating Makefiles
       shell: bash
       run: |
@@ -42,15 +41,8 @@ jobs:
         else
           export enable_ccache=on
         fi
-
-        # Download and extract Skia
         curl -L https://github.com/blueloveTH/aseprite/releases/download/v0.01/skia.zip --output skia.zip
-        if [[ "${{ runner.os }}" == "Windows" ]] ; then
-          7z x skia.zip  # Make sure 7z is installed on the Windows runner or use Expand-Archive for PowerShell
-        else
-          unzip skia.zip
-        fi
-
+        7z x skia.zip
         cmake -S . -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
           -DENABLE_UI=${{ matrix.enable_ui }} \
@@ -59,16 +51,13 @@ jobs:
           -DSKIA_DIR=./skia \
           -DSKIA_LIBRARY_DIR=./skia/out/Release-x64 \
           -DSKIA_LIBRARY=./skia/out/Release-x64/skia.lib
-
     - name: Compiling
       shell: bash
       run: |
         cd build && ninja
-
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v3
       with:
         name: aseprite
         path: |
-          ${{ github.workspace }}/aseprite/build/bin/data
-          ${{ github.workspace }}/aseprite/build/bin/aseprite.exe
+          D:/a/aseprite/aseprite/build/bin/data
+          D:/a/aseprite/aseprite/build/bin/aseprite.exe
